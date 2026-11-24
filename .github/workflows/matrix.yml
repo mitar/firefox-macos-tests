@@ -12,9 +12,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-15]
-        build: ["161.0"]
+        runner: [macos-15, macos-26]
+        build: ["161.0", "162.0b1"]
         scenario: [A, B1, B2, C, D1, D2, E, F]
+        # Each scenario runs twice, as the window which ends up with the focus can differ between runs.
+        run: [1, 2]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
@@ -27,5 +29,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: firefox-${{ matrix.build }}-${{ matrix.scenario }}-${{ matrix.runner }}
+          name: firefox-${{ matrix.build }}-${{ matrix.scenario }}-${{ matrix.runner }}-${{ matrix.run }}
           path: out
