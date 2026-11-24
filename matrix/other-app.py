@@ -10,7 +10,8 @@ import webbrowser
 
 root = tkinter.Tk()
 root.title(sys.argv[1])
-root.geometry("400x200+300+250")
+# The window with a link in the top left corner, so that it is not behind the others, which are in the middle.
+root.geometry("400x200+80+80" if len(sys.argv) > 2 else "400x200+300+250")
 if len(sys.argv) > 2:
     button = tkinter.Button(root, text="Open the link", command=lambda: webbrowser.open(sys.argv[2]))
     button.pack(padx=20, pady=20)

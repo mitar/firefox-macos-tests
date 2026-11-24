@@ -47,10 +47,17 @@ type_text() {
   osascript -e "tell application \"System Events\" to keystroke \"$1\""
 }
 
-# Switches to Space N with Control+arrow, as the user does, one Space at a time.
+# Switches to Space N by clicking it in Mission Control's Spaces bar, as Control+arrow does nothing while some
+# applications are frontmost, and with Control+arrow when the click did not reach it.
 space_to() {
   local target=$1 current tries=0
-  while current=$(current_space); [ "$current" != "$target" ] && [ $tries -lt 10 ]; do
+  [ "$(current_space)" = "$target" ] && return 0
+  open -a "Mission Control"
+  sleep 1.5
+  osascript -e "tell application \"System Events\" to tell process \"Dock\" to click button $target of list 1 of group \"Spaces Bar\" of group 1 of group \"Mission Control\"" > /dev/null 2>&1 \
+    || key_code 53
+  sleep 2
+  while current=$(current_space); [ "$current" != "$target" ] && [ $tries -lt 6 ]; do
     if [ "$current" = 0 ] || [ "$current" -gt "$target" ]; then key_code 123 "control down"; else key_code 124 "control down"; fi
     sleep 1.5
     tries=$((tries + 1))
@@ -233,12 +240,26 @@ quit_firefox() {
   log "Firefox did not quit"
 }
 
+# Turns off and on again macOS switching to a Space with windows of an application when it activates, which the setup
+# turns off while it opens windows on Spaces 2 and 3, as Firefox activates for a window opened with its command line.
+swoosh() {
+  if [ "$1" = off ]; then
+    defaults write com.apple.dock workspaces-auto-swoosh -bool NO
+  else
+    defaults delete com.apple.dock workspaces-auto-swoosh
+  fi
+  killall Dock
+  sleep 4
+}
+
 main() {
   PYTHON=$(for p in /Library/Frameworks/Python.framework/Versions/3.1*/bin/python3 /usr/bin/python3 python3; do "$p" -c "import tkinter" 2>/dev/null && echo "$p" && break; done)
   log "python with tkinter: $PYTHON"
   setup
   log "seed"
+  swoosh off
   open_windows
+  swoosh on
   sleep 16
   case "$SCENARIO" in
     A|B1|B2) quit_firefox ;;
@@ -262,6 +283,9 @@ main() {
     "$PYTHON" "$HERE/other-app.py" "Link App" "http://localhost:$PORT/url-page.html" > /dev/null 2>&1 &
     wait_for_title "Link App" || log "no window Link App"
     sleep 2
+    # A window of an application started without input of the user opens in the background, so the user clicks it.
+    cliclick "c:280,180"
+    sleep 1
   fi
   snapshot > "$OUT/before.json"
   screencapture -x "$OUT/before.png"
