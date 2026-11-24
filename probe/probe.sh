@@ -18,7 +18,8 @@ step() {
   local file
   file=$(printf '%s/%02d-%s' "$OUT" "$n" "$name")
   echo "== $name"
-  "$@" > "$file.txt" 2>&1
+  # Each step ends after 300 seconds, so that a step waiting for a prompt nobody answers does not stop the others.
+  perl -e 'alarm shift; exec @ARGV' 300 bash -c "$(declare -f); $(printf '%q ' "$@")" > "$file.txt" 2>&1
   echo "exit $?" >> "$file.txt"
   cat "$file.txt"
   screencapture -x "$file.png" 2>> "$file.txt" || true
@@ -81,11 +82,16 @@ onscreen() {
 
 # Opens each browser once and quits it, so that Gatekeeper's verification at the first start is over before a test.
 first_starts() {
+  # Telling the browser itself to quit would wait for the user to allow osascript to control it, which System Events,
+  # which pressing Command+Q goes through, is allowed already.
   for app in Firefox "Google Chrome" "Microsoft Edge" Safari; do
     open -a "$app"
-    sleep 20
-    osascript -e "tell application \"$app\" to quit"
-    sleep 3
+    sleep 25
+    open -a "$app"
+    sleep 2
+    osascript -e 'tell application "System Events" to keystroke "q" using command down'
+    sleep 5
+    pkill -x "$app" 2>/dev/null || true
   done
   echo "on screen: $(onscreen)"
 }
