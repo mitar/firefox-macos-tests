@@ -75,8 +75,19 @@ add_space() {
 # The windows on screen, which are those of the current Space, each as its application and title.
 onscreen() {
   osascript -l JavaScript -e 'ObjC.import("CoreGraphics");
-    var list = ObjC.deepUnwrap($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, 0));
+    var list = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, 0)));
     JSON.stringify(list.filter(w => w.kCGWindowLayer == 0).map(w => [w.kCGWindowOwnerName, w.kCGWindowName || ""]))'
+}
+
+# Opens each browser once and quits it, so that Gatekeeper's verification at the first start is over before a test.
+first_starts() {
+  for app in Firefox "Google Chrome" "Microsoft Edge" Safari; do
+    open -a "$app"
+    sleep 20
+    osascript -e "tell application \"$app\" to quit"
+    sleep 3
+  done
+  echo "on screen: $(onscreen)"
 }
 
 space_window() {
@@ -134,6 +145,7 @@ step spaces spaces
 step space-window space_window
 step add-space add_space
 step switch-space switch_space
+step first-starts first_starts
 step add-to-dock add_to_dock
 step dock dock
 step dock-click-firefox dock_click_firefox
