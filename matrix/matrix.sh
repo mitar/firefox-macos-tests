@@ -4,8 +4,9 @@
 #
 # Usage: matrix.sh APP SCENARIO OUT_DIR
 #
-# APP is firefox (BUILD names the release, such as 161.0 or 162.0b1, installed from archive.mozilla.org). SCENARIO is
-# one of A, B1, B2, C, D1, D2, E and F. Every scenario starts with four Spaces, each with a window of another
+# APP is firefox (BUILD names the release, such as 161.0 or 162.0b1, installed from archive.mozilla.org), chrome, edge,
+# safari or textedit. SCENARIO is one of A, B1, B2, C, D1, D2, E and F, of which TextEdit has A, C and E, and Safari,
+# which has no command to restart, all but F. Every scenario starts with four Spaces, each with a window of another
 # application titled "Other N", which tells the Spaces apart, and with the browser's three windows, each with a page of
 # its own, on Spaces 1 to 3, saved or open. The user is on Space 4 when the scenario launches the browser with a click
 # on its Dock icon, opens a link from another application or crashes it, and on Space 1 when it restarts. OUT_DIR
@@ -20,6 +21,17 @@ OUT=$(mkdir -p "$3" && cd "$3" && pwd)
 HERE=$(cd "$(dirname "$0")" && pwd)
 BUILD=${BUILD:-161.0}
 PORT=8000
+
+case "$APP" in
+  firefox) NAME=Firefox; PROC=firefox; BUNDLE=org.mozilla.firefox; APP_PATH=/Applications/Firefox.app ;;
+  chrome) NAME="Google Chrome"; PROC="Google Chrome"; BUNDLE=com.google.Chrome; APP_PATH="/Applications/Google Chrome.app"
+    QUIT_URL=chrome://quit; RESTART_URL=chrome://restart ;;
+  edge) NAME="Microsoft Edge"; PROC="Microsoft Edge"; BUNDLE=com.microsoft.edgemac; APP_PATH="/Applications/Microsoft Edge.app"
+    QUIT_URL=edge://quit; RESTART_URL=edge://restart ;;
+  safari) NAME=Safari; PROC=Safari; BUNDLE=com.apple.Safari; APP_PATH=/Applications/Safari.app ;;
+  textedit) NAME=TextEdit; PROC=TextEdit; BUNDLE=; APP_PATH=/System/Applications/TextEdit.app ;;
+  *) echo "unknown application $APP" >&2; exit 2 ;;
+esac
 
 log() { echo "$(date +%T) $*" | tee -a "$OUT/log.txt" >&2; }
 
@@ -136,7 +148,16 @@ dock_click() {
 }
 
 app_windows() {
-  onscreen | python3 -c 'import json,sys; print(sum(1 for a, t in json.load(sys.stdin) if a == "Firefox"))'
+  onscreen | NAME="$NAME" python3 -c 'import json,os,sys; print(sum(1 for a, t in json.load(sys.stdin) if a == os.environ["NAME"]))'
+}
+
+wait_for_app_window() {
+  local i
+  for i in $(seq 60); do
+    [ "$(app_windows)" -gt 0 ] && return 0
+    sleep 0.5
+  done
+  return 1
 }
 
 wait_for_title() {
@@ -159,6 +180,60 @@ setup() {
   log "setup"
   brew install cliclick > /dev/null 2>&1
   defaults write -g NSQuitAlwaysKeepsWindows -bool true
+  setup_app
+  # The application is in the Dock, which has only Apple's applications on a runner, Safari among them.
+  if [ "$APP" != safari ]; then
+    defaults write com.apple.dock persistent-apps -array-add "<dict><key>tile-data</key><dict><key>file-data</key><dict><key>_CFURLString</key><string>$APP_PATH</string><key>_CFURLStringType</key><integer>0</integer></dict></dict></dict>"
+    killall Dock
+    sleep 5
+  fi
+  # The pages, served on localhost, and the documents of TextEdit.
+  mkdir -p /tmp/pages
+  for name in page-one page-two page-three url-page; do
+    printf '<!DOCTYPE html><title>%s</title><p>%s</p>\n' "$name" "$name" > "/tmp/pages/$name.html"
+    echo "$name" > "/tmp/pages/$name.txt"
+  done
+  (cd /tmp/pages && python3 -m http.server "$PORT" --bind 127.0.0.1 > /dev/null 2>&1 &)
+  # The browser becomes the default browser, which macOS asks the user to confirm.
+  if [ -n "$BUNDLE" ] && [ "$APP" != safari ]; then
+    osascript -l JavaScript -e "ObjC.import('CoreServices'); \$.LSSetDefaultHandlerForURLScheme(\$('http'), \$('$BUNDLE')); \$.LSSetDefaultHandlerForURLScheme(\$('https'), \$('$BUNDLE'))"
+    sleep 3
+    osascript -e 'tell application "System Events" to tell process "CoreServicesUIAgent"
+        repeat with b in (buttons of window 1)
+          if name of b starts with "Use" then click b
+        end repeat
+      end tell' 2>&1 | tee -a "$OUT/log.txt"
+    sleep 2
+  fi
+  setup_spaces
+}
+
+setup_app() {
+  case "$APP" in
+    firefox) setup_firefox ;;
+    chrome|edge)
+      local domain support
+      domain=$([ "$APP" = chrome ] && echo com.google.Chrome || echo com.microsoft.Edge)
+      support=$([ "$APP" = chrome ] && echo "Google/Chrome" || echo "Microsoft Edge")
+      sudo xattr -dr com.apple.quarantine "$APP_PATH"
+      # Continue where it left off, which is not the default, and none of the questions of a first start.
+      defaults write "$domain" RestoreOnStartup -int 1
+      defaults write "$domain" DefaultBrowserSettingEnabled -bool false
+      defaults write "$domain" PromotionalTabsEnabled -bool false
+      defaults write "$domain" MetricsReportingEnabled -bool false
+      defaults write "$domain" PrivacySandboxPromptEnabled -bool false
+      defaults write "$domain" HideFirstRunExperience -bool true
+      defaults write "$domain" DefaultSearchProviderEnabled -bool true
+      defaults write "$domain" DefaultSearchProviderName -string Example
+      defaults write "$domain" DefaultSearchProviderSearchURL -string 'https://search.example/?q={searchTerms}'
+      mkdir -p "$HOME/Library/Application Support/$support"
+      touch "$HOME/Library/Application Support/$support/First Run"
+      ;;
+  esac
+  log "$NAME $(defaults read "$APP_PATH/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null)"
+}
+
+setup_firefox() {
   # Firefox from Mozilla's disk image, with the matrix's policies.
   curl -sSL -o /tmp/firefox.dmg "https://archive.mozilla.org/pub/firefox/releases/$BUILD/mac/en-US/Firefox%20$BUILD.dmg"
   hdiutil attach -quiet -nobrowse -mountpoint /tmp/firefox-dmg /tmp/firefox.dmg
@@ -170,27 +245,10 @@ setup() {
   local policies=firefox-policies.json
   [ "$SCENARIO" = B2 ] || [ "$SCENARIO" = D2 ] && policies=firefox-policies-new-window.json
   sudo cp "$HERE/$policies" /Applications/Firefox.app/Contents/Resources/distribution/policies.json
-  log "Firefox $(defaults read /Applications/Firefox.app/Contents/Info.plist CFBundleShortVersionString)"
-  # The browser is in the Dock, which has only Apple's applications on a runner.
-  defaults write com.apple.dock persistent-apps -array-add "<dict><key>tile-data</key><dict><key>file-data</key><dict><key>_CFURLString</key><string>/Applications/Firefox.app</string><key>_CFURLStringType</key><integer>0</integer></dict></dict></dict>"
-  killall Dock
-  sleep 5
-  # The pages, served on localhost.
-  mkdir -p /tmp/pages
-  for name in page-one page-two page-three url-page; do
-    printf '<!DOCTYPE html><title>%s</title><p>%s</p>\n' "$name" "$name" > "/tmp/pages/$name.html"
-  done
-  (cd /tmp/pages && python3 -m http.server "$PORT" --bind 127.0.0.1 > /dev/null 2>&1 &)
-  # Firefox becomes the default browser, which macOS asks the user to confirm.
-  osascript -l JavaScript -e 'ObjC.import("CoreServices"); $.LSSetDefaultHandlerForURLScheme($("http"), $("org.mozilla.firefox")); $.LSSetDefaultHandlerForURLScheme($("https"), $("org.mozilla.firefox"))'
-  sleep 3
-  osascript -e 'tell application "System Events" to tell process "CoreServicesUIAgent"
-      repeat with b in (buttons of window 1)
-        if name of b starts with "Use" then click b
-      end repeat
-    end tell' 2>&1 | tee -a "$OUT/log.txt"
-  sleep 2
-  # Four Spaces, each with a window of another application.
+}
+
+# Four Spaces, each with a window of another application.
+setup_spaces() {
   local i
   for i in 1 2 3; do
     open -a "Mission Control"
@@ -209,35 +267,48 @@ setup() {
   space_to 1
 }
 
-# Opens Firefox's three windows, the first from the Dock on Space 1, the others with its command line on Spaces 2 and 3.
+# Opens the application's three windows on Spaces 1 to 3, each with its page or document: a browser's first window from
+# the Dock and its others with Command+N, Firefox's with its command line, and TextEdit's by opening the documents.
 open_windows() {
-  space_to 1
-  dock_click Firefox
-  wait_for_title "Firefox" || log "Firefox opened no window"
-  sleep 4
-  load "http://localhost:$PORT/page-one.html"
-  wait_for_title page-one || log "no window shows page-one"
-  local n
-  for n in 2 3; do
+  local n name
+  for n in 1 2 3; do
     space_to $n
-    local name
-    name=$([ $n = 2 ] && echo page-two || echo page-three)
-    /Applications/Firefox.app/Contents/MacOS/firefox -new-window "http://localhost:$PORT/$name.html" > /dev/null 2>&1 &
+    name=$(echo page-one page-two page-three | cut -d' ' -f$n)
+    if [ "$APP" = textedit ]; then
+      open -a TextEdit "/tmp/pages/$name.txt"
+    elif [ $n = 1 ]; then
+      dock_click "$NAME"
+      wait_for_app_window || log "$NAME opened no window"
+      sleep 4
+      load "http://localhost:$PORT/$name.html"
+    elif [ "$APP" = firefox ]; then
+      /Applications/Firefox.app/Contents/MacOS/firefox -new-window "http://localhost:$PORT/$name.html" > /dev/null 2>&1 &
+    else
+      activate_app
+      sleep 2
+      keystroke n "command down"
+      sleep 3
+      load "http://localhost:$PORT/$name.html"
+    fi
     wait_for_title "$name" || log "no window shows $name"
     sleep 2
   done
 }
 
-quit_firefox() {
-  osascript -e 'tell application "System Events" to set frontmost of process "firefox" to true'
+activate_app() {
+  osascript -e "tell application \"System Events\" to set frontmost of process \"$PROC\" to true"
+}
+
+quit_app() {
+  activate_app
   sleep 1
-  keystroke q "command down"
+  if [ -n "${QUIT_URL:-}" ]; then load "$QUIT_URL"; else keystroke q "command down"; fi
   local i
   for i in $(seq 30); do
-    pgrep -x firefox > /dev/null || return 0
+    pgrep -x "$PROC" > /dev/null || return 0
     sleep 1
   done
-  log "Firefox did not quit"
+  log "$NAME did not quit"
 }
 
 # Turns off and on again macOS switching to a Space with windows of an application when it activates, which the setup
@@ -262,12 +333,16 @@ main() {
   swoosh on
   sleep 16
   case "$SCENARIO" in
-    A|B1|B2) quit_firefox ;;
-    E) sleep 15; pkill -9 -x firefox; sleep 3 ;;
+    A|B1|B2) quit_app ;;
+    E) sleep 15; pkill -9 -x "$PROC"; sleep 3 ;;
   esac
-  if [ "$SCENARIO" = F ]; then
+  if [ "$SCENARIO" = F ] && [ "$APP" != firefox ]; then
     space_to 1
-    osascript -e 'tell application "System Events" to set frontmost of process "firefox" to true'
+    activate_app
+    sleep 1
+  elif [ "$SCENARIO" = F ]; then
+    space_to 1
+    activate_app
     keystroke j "command down, shift down"
     sleep 4
     type_text 'Services.wm.getMostRecentWindow(\"navigator:browser\").setTimeout(() => Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart), 12000)'
@@ -291,8 +366,9 @@ main() {
   screencapture -x "$OUT/before.png"
   log "trigger"
   case "$SCENARIO" in
-    A|C|E) dock_click Firefox ;;
+    A|C|E) dock_click "$NAME" ;;
     B1|B2|D1|D2) key_code 36 ;;
+    F) [ "$APP" = firefox ] || load "$RESTART_URL" ;;
   esac
   observe $([ "$SCENARIO" = F ] && echo 20 || echo 10)
   spaces
