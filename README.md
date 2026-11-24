@@ -7,3 +7,9 @@ map of launch and window states across desktops, for [Mozilla bug 2090730](https
 The tests run on GitHub's hosted macOS runners. `probe` checks what a runner allows: the macOS version, System Integrity
 Protection, the screen, the browsers it has, the accessibility permissions of the shell, creating and switching
 Spaces, clicking the Dock, and screenshots, which it uploads as artifacts.
+
+`matrix` runs the scenarios of the map with Firefox, one job each: `matrix/matrix.sh` installs the Firefox build from
+archive.mozilla.org, makes it the default browser, creates four Spaces with a window of another application on each
+(`matrix/other-app.py`), opens Firefox's three windows on Spaces 1 to 3, and launches, links, crashes or restarts it as
+the scenario says, with real clicks on the Dock and key presses. Each job uploads `result.json` with the windows on
+screen and the frontmost window before and after, the windows of each Space at the end, and screenshots.

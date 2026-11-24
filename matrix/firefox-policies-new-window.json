@@ -1,0 +1,44 @@
+{
+  "policies": {
+    "DisableAppUpdate": true,
+    "DisableTelemetry": true,
+    "DontCheckDefaultBrowser": true,
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "UserMessaging": {
+      "WhatsNew": false,
+      "ExtensionRecommendations": false,
+      "FeatureRecommendations": false,
+      "SkipOnboarding": true,
+      "MoreFromMozilla": false
+    },
+    "Preferences": {
+      "browser.startup.page": {
+        "Value": 3,
+        "Status": "user"
+      },
+      "browser.aboutwelcome.enabled": {
+        "Value": false,
+        "Status": "user"
+      },
+      "devtools.chrome.enabled": {
+        "Value": true,
+        "Status": "user"
+      },
+      "devtools.webconsole.input.autocomplete": {
+        "Value": false,
+        "Status": "user"
+      },
+      "browser.warnOnQuitShortcut": {
+        "Value": false,
+        "Status": "user"
+      },
+      "browser.link.open_newwindow.override.external": {
+        "Value": 2,
+        "Status": "user"
+      }
+    },
+    "SkipTermsOfUse": true,
+    "DisableFirefoxStudies": true
+  }
+}
