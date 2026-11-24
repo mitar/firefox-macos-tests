@@ -237,8 +237,12 @@ setup_app() {
       defaults write "$domain" DefaultSearchProviderEnabled -bool true
       defaults write "$domain" DefaultSearchProviderName -string Example
       defaults write "$domain" DefaultSearchProviderSearchURL -string 'https://search.example/?q={searchTerms}'
-      mkdir -p "$HOME/Library/Application Support/$support"
+      mkdir -p "$HOME/Library/Application Support/$support/Default"
       touch "$HOME/Library/Application Support/$support/First Run"
+      # Policies set with defaults apply on macOS only with device management, so the profile has "Continue where you
+      # left off" chosen, as the browser's settings choose it.
+      echo '{"session": {"restore_on_startup": 1}, "browser": {"check_default_browser": false, "has_seen_welcome_page": true}}' \
+        > "$HOME/Library/Application Support/$support/Default/Preferences"
       ;;
   esac
   log "$NAME $(defaults read "$APP_PATH/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null)"
