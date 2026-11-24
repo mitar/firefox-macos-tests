@@ -176,6 +176,17 @@ load() {
   key_code 36
 }
 
+# Loads the page NAME in the frontmost window, again when the window does not show it, as when a page Edge shows at its
+# start takes the keys.
+load_page() {
+  local name=$1 attempt
+  for attempt in 1 2 3; do
+    load "http://localhost:$PORT/$name.html"
+    wait_for_title "$name" && return 0
+  done
+  return 1
+}
+
 setup() {
   log "setup"
   brew install cliclick > /dev/null 2>&1
@@ -280,7 +291,7 @@ open_windows() {
       dock_click "$NAME"
       wait_for_app_window || log "$NAME opened no window"
       sleep 4
-      load "http://localhost:$PORT/$name.html"
+      load_page "$name"
     elif [ "$APP" = firefox ]; then
       /Applications/Firefox.app/Contents/MacOS/firefox -new-window "http://localhost:$PORT/$name.html" > /dev/null 2>&1 &
     else
@@ -288,7 +299,7 @@ open_windows() {
       sleep 2
       keystroke n "command down"
       sleep 3
-      load "http://localhost:$PORT/$name.html"
+      load_page "$name"
     fi
     wait_for_title "$name" || log "no window shows $name"
     sleep 2
