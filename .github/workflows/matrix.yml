@@ -14,7 +14,7 @@ jobs:
       matrix:
         runner: [macos-15]
         build: ["161.0"]
-        scenario: [A]
+        scenario: [A, B1, B2, C, D1, D2, E, F]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:

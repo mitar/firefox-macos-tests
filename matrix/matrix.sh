@@ -123,6 +123,9 @@ dock_click() {
   position=$(osascript -e "tell application \"System Events\" to tell process \"Dock\" to get position of UI element \"$name\" of list 1")
   [[ $position =~ ^([0-9]+),\ ([0-9]+)$ ]] || { log "no Dock icon of $name: $position"; return 1; }
   cliclick "c:$((BASH_REMATCH[1] + 20)),$((BASH_REMATCH[2] + 20))"
+  # The pointer leaves the Dock, as switching Spaces with the keyboard does nothing while the Dock shows a tooltip.
+  sleep 0.5
+  cliclick "m:512,300"
 }
 
 app_windows() {
