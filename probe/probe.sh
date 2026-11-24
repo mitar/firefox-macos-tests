@@ -82,6 +82,10 @@ onscreen() {
 
 # Opens each browser once and quits it, so that Gatekeeper's verification at the first start is over before a test.
 first_starts() {
+  # Homebrew Cask installed the browsers on the runner as downloaded files, which macOS asks about at the first start.
+  for app in Firefox "Google Chrome" "Microsoft Edge"; do
+    sudo xattr -dr com.apple.quarantine "/Applications/$app.app"
+  done
   # Telling the browser itself to quit would wait for the user to allow osascript to control it, which System Events,
   # which pressing Command+Q goes through, is allowed already.
   for app in Firefox "Google Chrome" "Microsoft Edge" Safari; do
