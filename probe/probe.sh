@@ -72,6 +72,20 @@ add_space() {
   spaces
 }
 
+# The windows on screen, which are those of the current Space, each as its application and title.
+onscreen() {
+  osascript -l JavaScript -e 'ObjC.import("CoreGraphics");
+    var list = ObjC.deepUnwrap($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, 0));
+    JSON.stringify(list.filter(w => w.kCGWindowLayer == 0).map(w => [w.kCGWindowOwnerName, w.kCGWindowName || ""]))'
+}
+
+space_window() {
+  echo "space-one" > /tmp/space-one.txt
+  open -a TextEdit /tmp/space-one.txt
+  sleep 5
+  onscreen
+}
+
 key_code() {
   osascript -e "tell application \"System Events\" to key code $1 ${2:+using $2}"
 }
@@ -79,8 +93,21 @@ key_code() {
 switch_space() {
   # Control + right arrow moves to the Space on the right.
   key_code 124 "control down"
-  sleep 2
+  sleep 3
+  echo "on screen after Control+Right: $(onscreen)"
   defaults read com.apple.spaces 2>&1 | grep -A2 "Current Space" | head -10
+  key_code 123 "control down"
+  sleep 3
+  echo "on screen after Control+Left: $(onscreen)"
+}
+
+# Adds the browsers to the Dock, which has only Apple's applications on a runner.
+add_to_dock() {
+  for app in Firefox "Google Chrome" "Microsoft Edge"; do
+    defaults write com.apple.dock persistent-apps -array-add "<dict><key>tile-data</key><dict><key>file-data</key><dict><key>_CFURLString</key><string>/Applications/$app.app</string><key>_CFURLStringType</key><integer>0</integer></dict></dict></dict>"
+  done
+  killall Dock
+  sleep 5
 }
 
 dock() {
@@ -96,7 +123,7 @@ dock_click_firefox() {
     cliclick "c:$((BASH_REMATCH[1] + 10)),$((BASH_REMATCH[2] + 10))"
     sleep 15
     osascript -e 'tell application "System Events" to get name of every process whose frontmost is true'
-    osascript -e 'tell application "System Events" to tell process "firefox" to get name of every window'
+    echo "on screen: $(onscreen)"
   fi
 }
 
@@ -104,8 +131,10 @@ step system system
 step apps apps
 step tcc tcc
 step spaces spaces
+step space-window space_window
 step add-space add_space
 step switch-space switch_space
+step add-to-dock add_to_dock
 step dock dock
 step dock-click-firefox dock_click_firefox
 exit 0
