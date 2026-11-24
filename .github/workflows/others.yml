@@ -1,0 +1,38 @@
+name: others
+
+# The scenarios with the applications the map compares Firefox with, which restore their windows when they start.
+on:
+  push:
+    paths:
+      - .github/workflows/others.yml
+  workflow_dispatch:
+
+jobs:
+  scenario:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-26]
+        app: [chrome, edge, safari, textedit]
+        scenario: [A, B1, C, D1, E, F]
+        exclude:
+          - app: safari
+            scenario: F
+          - app: textedit
+            scenario: B1
+          - app: textedit
+            scenario: D1
+          - app: textedit
+            scenario: F
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the scenario
+        run: matrix/matrix.sh ${{ matrix.app }} ${{ matrix.scenario }} out
+      - name: Upload the result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.app }}-${{ matrix.scenario }}-${{ matrix.runner }}
+          path: out
