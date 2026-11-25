@@ -4,8 +4,8 @@
 // Usage: find-text SCREENSHOT TEXT...
 //
 // SCREENSHOT is a capture of the whole screen by screencapture. The program prints the center of the first line of text
-// on the screen which equals one of TEXT, ignoring case, as "X Y" in the screen's points, followed by the TEXT it matched,
-// and exits with 1 when the screen shows none of them.
+// on the screen which equals one of TEXT, ignoring case and arrows at its ends, as "X Y" in the screen's points, followed
+// by the TEXT it matched, and exits with 1 when the screen shows none of them.
 
 import AppKit
 import Foundation
@@ -29,11 +29,13 @@ request.usesLanguageCorrection = false
 try VNImageRequestHandler(cgImage: cgImage).perform([request])
 
 // The capture has the screen's pixels, which are two for a point on a Retina display.
+// A button's label can end with an arrow, as Edge's "Start setup \u{2192}".
+let ends = CharacterSet.whitespaces.union(CharacterSet(charactersIn: "\u{2192}\u{203A}\u{00BB}>"))
 let screen = NSScreen.main?.frame.size ?? CGSize(width: cgImage.width, height: cgImage.height)
 for text in wanted {
     for observation in request.results ?? [] {
         guard let candidate = observation.topCandidates(1).first,
-              candidate.string.trimmingCharacters(in: .whitespaces).lowercased() == text else { continue }
+              candidate.string.trimmingCharacters(in: ends).lowercased() == text else { continue }
         // Vision's coordinates are normalized, with the origin at the bottom left.
         let box = observation.boundingBox
         print(Int(box.midX * screen.width), Int((1 - box.midY) * screen.height), text)

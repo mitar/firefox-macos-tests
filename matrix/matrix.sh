@@ -279,11 +279,12 @@ choose_restore() {
   open -a "$NAME"
   wait_for_app_window || log "$NAME opened no window"
   sleep 8
-  # Edge shows its questions in a dialog of their own, more than a minute after its first start on a runner, and the
-  # next question a few seconds after the previous.
+  # Edge shows its welcome and questions in a dialog of their own, more than a minute after its first start on a
+  # runner, and each next question a few seconds after the previous.
   if [ "$APP" = edge ]; then
     for i in $(seq 30); do
-      if click_text Skip "Continue without signing in" "Confirm and continue" "Got it" "Not now" "No, thanks" "Start browsing"; then
+      if click_text "Start setup" Skip "Continue without signing in" "Confirm and continue" "Got it" "Not now" "No, thanks" \
+          "Start browsing" "Let's go" Finish Done; then
         cp /tmp/screen.png "$OUT/first-run-$i.png"
         misses=0
         clicked=1
