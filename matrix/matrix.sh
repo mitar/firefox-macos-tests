@@ -449,7 +449,9 @@ main() {
   log "seed"
   swoosh off
   open_windows
-  swoosh on
+  # With SWOOSH_OFF=1, macOS does not switch to a Space with windows of an application which activates in the scenario
+  # either.
+  if [ -n "${SWOOSH_OFF:-}" ]; then log "switching to a Space with windows of an activated application stays off"; else swoosh on; fi
   sleep 16
   case "$SCENARIO" in
     A|B1|B2) quit_app ;;
