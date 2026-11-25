@@ -59,31 +59,29 @@ type_text() {
   osascript -e "tell application \"System Events\" to keystroke \"$1\""
 }
 
-# Switches to Space N by clicking it in Mission Control's Spaces bar, as Control+arrow does nothing while some
-# applications are frontmost, and with Control+arrow when the click did not reach it.
+# Switches to Space N, the one with the window "Other N", by clicking it in Mission Control's Spaces bar, as
+# Control+arrow does nothing while some applications are frontmost. macOS rearranges Spaces by their most recent use
+# by default, so that the Space can be at another place in the bar: the buttons are tried, the Nth first, until the
+# Space shows "Other N".
 space_to() {
-  local target=$1 current tries=0
+  local target=$1 button
   [ "$(current_space)" = "$target" ] && return 0
-  # Control+arrow does nothing while Firefox or Safari is frontmost, so Finder comes to the front first.
-  osascript -e 'tell application "Finder" to activate' > /dev/null 2>&1
-  sleep 0.5
-  open -a "Mission Control"
-  sleep 1.5
-  osascript -e "tell application \"System Events\" to tell process \"Dock\" to click button $target of list 1 of group \"Spaces Bar\" of group 1 of group \"Mission Control\"" > /dev/null 2>&1 \
-    || key_code 53
-  sleep 2
-  while current=$(current_space); [ "$current" != "$target" ] && [ $tries -lt 6 ]; do
-    if [ "$current" = 0 ] || [ "$current" -gt "$target" ]; then key_code 123 "control down"; else key_code 124 "control down"; fi
-    sleep 1.5
-    tries=$((tries + 1))
-  done
-  if [ "$(current_space)" != "$target" ]; then
-    log "could not switch to Space $target"
+  for button in $target $target $(seq 4 | grep -vx "$target"); do
+    # Finder comes to the front first, so that Escape after a failed click reaches no application of the scenario.
+    osascript -e 'tell application "Finder" to activate' > /dev/null 2>&1
+    sleep 0.5
     open -a "Mission Control"
     sleep 1.5
-    osascript -e 'tell application "System Events" to tell process "Dock" to get {name, role} of every UI element of list 1 of group "Spaces Bar" of group 1 of group "Mission Control"' >> "$OUT/log.txt" 2>&1
-    key_code 53
-  fi
+    osascript -e "tell application \"System Events\" to tell process \"Dock\" to click button $button of list 1 of group \"Spaces Bar\" of group 1 of group \"Mission Control\"" > /dev/null 2>&1 \
+      || key_code 53
+    sleep 2
+    [ "$(current_space)" = "$target" ] && return 0
+  done
+  log "could not switch to Space $target"
+  open -a "Mission Control"
+  sleep 1.5
+  osascript -e 'tell application "System Events" to tell process "Dock" to get {name, role} of every UI element of list 1 of group "Spaces Bar" of group 1 of group "Mission Control"' >> "$OUT/log.txt" 2>&1
+  key_code 53
 }
 
 frontmost() {
@@ -255,27 +253,50 @@ setup_app() {
   log "$NAME $(defaults read "$APP_PATH/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null)"
 }
 
-# Chooses to continue where the browser left off, as a user does: the browser starts with its default profile, its
-# startup settings page is opened, the option is clicked, and the browser quits. Its RestoreOnStartup policy applies on
-# macOS only with device management, and the browser keeps the setting in Secure Preferences, signed for the profile,
-# so that a value written into the profile is reset. The click is at the place the option has on the runner's screen
-# of 1024x768 (see restore-setting.png). The session with the settings page is removed.
+# Clicks the first of the lines of TEXT the screen shows, found by find-text.swift, and fails when it shows none.
+click_text() {
+  local found x y
+  screencapture -x /tmp/screen.png
+  found=$(/tmp/find-text /tmp/screen.png "$@") || return 1
+  read -r x y _ <<< "$found"
+  cliclick "c:$x,$y"
+  log "clicked \"${found#* * }\""
+}
+
+# Chooses to continue where the browser left off, as a user does: the browser starts with its default profile, Edge's
+# questions of a first start are skipped, the startup settings page is opened, the option is clicked, and the browser
+# quits. Its RestoreOnStartup policy applies on macOS only with device management, and the browser keeps the setting in
+# Secure Preferences, signed for the profile, so that a value written into the profile is reset. The session with the
+# settings page is removed.
 choose_restore() {
-  local data=$1 page position
+  local data=$1 page option i misses=0
   if [ "$APP" = chrome ]; then
-    page=chrome://settings/onStartup; position=300,346
+    page=chrome://settings/onStartup; option="Continue where you left off"
   else
-    page=edge://settings/startHomeNTP; position=225,387
+    page=edge://settings/startHomeNTP; option="Open tabs from the previous session"
   fi
+  swiftc -O -o /tmp/find-text "$HERE/find-text.swift"
   open -a "$NAME"
   wait_for_app_window || log "$NAME opened no window"
   sleep 8
+  if [ "$APP" = edge ]; then
+    for i in $(seq 10); do
+      if click_text Skip "Continue without signing in" "Confirm and continue" "Got it" "Not now" "No, thanks" "Start browsing"; then
+        cp /tmp/screen.png "$OUT/first-run-$i.png"
+        misses=0
+      else
+        misses=$((misses + 1))
+        [ $misses -lt 2 ] || break
+      fi
+      sleep 4
+    done
+  fi
   activate_app
   sleep 1
   load "$page"
   wait_for_title Settings || log "no window shows the settings"
   sleep 4
-  cliclick "c:$position"
+  click_text "$option" || log "the settings show no option \"$option\""
   sleep 2
   screencapture -x "$OUT/restore-setting.png"
   quit_app
@@ -288,7 +309,7 @@ restore_setting() {
   if grep -q '"restore_on_startup":1' "$PROFILE/Default/Secure Preferences" "$PROFILE/Default/Preferences" 2>/dev/null; then
     log "$NAME continues where it left off"
   else
-    log "$NAME does not continue where it left off: $(grep -o '"restore_on_startup":[0-9]*' "$PROFILE/Default/Secure Preferences" "$PROFILE/Default/Preferences" 2>/dev/null)"
+    log "$NAME does not continue where it left off: $(grep -oh '"restore_on_startup":[0-9]\+' "$PROFILE/Default/Secure Preferences" "$PROFILE/Default/Preferences" 2>/dev/null)"
   fi
 }
 
