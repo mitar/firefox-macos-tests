@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         runner: [macos-15, macos-26]
-        # A selection of the jobs while the focus after restoring is debugged.
+        # A selection of the jobs while the focus after restoring is debugged, with the stacks of focus().
         scenario: [A]
         run: [1]
     runs-on: ${{ matrix.runner }}
