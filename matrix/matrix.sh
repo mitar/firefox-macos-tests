@@ -4,14 +4,14 @@
 #
 # Usage: matrix.sh APP SCENARIO OUT_DIR
 #
-# APP is firefox (BUILD names the release, such as 161.0 or 162.0b1, installed from archive.mozilla.org), chrome, edge,
-# safari or textedit. SCENARIO is one of A, B1, B2, C, D1, D2, E and F, of which TextEdit has A, C and E, and Safari,
-# which has no command to restart, all but F. Every scenario starts with four Spaces, each with a window of another
-# application titled "Other N", which tells the Spaces apart, and with the browser's three windows, each with a page of
-# its own, on Spaces 1 to 3, saved or open. The user is on Space 4 when the scenario launches the browser with a click
-# on its Dock icon, opens a link from another application or crashes it, and on Space 1 when it restarts. OUT_DIR
-# receives result.json with the windows on screen, the frontmost application and window before and after and each
-# change in between, the windows of each Space at the end, and screenshots.
+# APP is firefox (BUILD names the release, such as 161.0 or 162.0b1, installed from archive.mozilla.org, and PATCHED=1
+# applies the patch of the bug to it), chrome, edge, safari or textedit. SCENARIO is one of A, B1, B2, C, D1, D2, E and
+# F, of which TextEdit has A, C and E, and Safari, which has no command to restart, all but F. Every scenario starts
+# with four Spaces, each with a window of another application titled "Other N", which tells the Spaces apart, and with
+# the browser's three windows, each with a page of its own, on Spaces 1 to 3, saved or open. The user is on Space 4 when
+# the scenario launches the browser with a click on its Dock icon, opens a link from another application or crashes it,
+# and on Space 1 when it restarts. OUT_DIR receives result.json with the windows on screen, the frontmost application
+# and window before and after and each change in between, the windows of each Space at the end, and screenshots.
 
 set -uo pipefail
 
@@ -330,6 +330,27 @@ setup_firefox() {
   local policies=firefox-policies.json
   [ "$SCENARIO" = B2 ] || [ "$SCENARIO" = D2 ] && policies=firefox-policies-new-window.json
   sudo cp "$HERE/$policies" /Applications/Firefox.app/Contents/Resources/distribution/policies.json
+  [ -z "${PATCHED:-}" ] || patch_firefox
+}
+
+# Applies the patch of bug 2090730 (session-restore-launch-window.patch of ubuntu-config) to the installed Firefox: it
+# changes only SessionStore.sys.mjs, which is in Firefox's omni.ja, so the file is patched there, after checking that it
+# is the one the patch was made for. Mozilla's omni.ja has its central directory at the start, which unzip reads with a
+# warning.
+patch_firefox() {
+  local work=/tmp/omni omni=/Applications/Firefox.app/Contents/Resources/omni.ja
+  local entry=moz-src/browser/components/sessionstore/SessionStore.sys.mjs
+  rm -rf "$work"
+  mkdir -p "$work"
+  (cd "$work" && unzip -q "$omni" > /dev/null 2>&1)
+  if [ "$(shasum -a 256 "$work/$entry" 2>/dev/null | cut -d' ' -f1)" != 472bbf8e6a21cf707d572a4fa570cc40079e9461d1e68f2060ec56878c407652 ]; then
+    log "the SessionStore.sys.mjs of Firefox $BUILD is not the one of the patch"
+    exit 1
+  fi
+  (cd "$work/moz-src" && patch -p1 -s < "$HERE/session-restore-launch-window.patch")
+  sudo rm "$omni"
+  (cd "$work" && sudo zip -qrX "$omni" .)
+  log "Firefox $BUILD patched with session-restore-launch-window.patch"
 }
 
 # Four Spaces, each with a window of another application.

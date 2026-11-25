@@ -1,0 +1,33 @@
+name: patched
+
+# Firefox 161 with the patch of bug 2090730 (matrix/session-restore-launch-window.patch, from ubuntu-config), in the
+# scenarios which start Firefox and restore its session (A, B1, B2, E), and those which do not (C, F) for comparison.
+on:
+  push:
+    paths:
+      - .github/workflows/patched.yml
+  workflow_dispatch:
+
+jobs:
+  scenario:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-26]
+        scenario: [A, B1, B2, C, E, F]
+        run: [1, 2]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the scenario
+        env:
+          BUILD: "161.0"
+          PATCHED: "1"
+        run: matrix/matrix.sh firefox ${{ matrix.scenario }} out
+      - name: Upload the result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firefox-patched-${{ matrix.scenario }}-${{ matrix.runner }}-${{ matrix.run }}
+          path: out

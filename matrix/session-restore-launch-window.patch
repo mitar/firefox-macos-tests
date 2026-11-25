@@ -1,0 +1,162 @@
+Description: Keep the window opened for a launch as it was opened and restore the saved windows into new ones.
+ When Firefox starts and restores the previous session, the session store restores the first window of the saved
+ session into the window opened for the launch. A URL from the command line, as when a link is opened from another
+ application while Firefox is not running, becomes a tab of that window, on whichever workspace it returns to,
+ also when browser.link.open_newwindow.override.external (or browser.link.open_newwindow, which it falls back to)
+ opens external links in a new window, as they do while Firefox runs. A launch without a URL opens no new window
+ either, unlike a launch while Firefox runs.
+ .
+ The window opened for the launch now keeps its page, the URL or the start page, every saved window is
+ restored into a new window, and the window opened for the launch is the one focused afterwards. With a URL this
+ follows where external links open. Without one it holds for every start by the user, also a recovery after a
+ crash, but not for a restart by Firefox itself (browser.sessionstore.resume_session_once), such as after an
+ update, which reopens the windows as they were.
+ .
+ On Wayland every window opened during startup session restore waits hidden until it is restored, and a window
+ which is not restored is shown when session restore finishes (wayland-session-restore-show-waiting-windows.patch).
+ The window opened for the launch is thus shown after the restored ones, so the compositor places it on the current
+ workspace and focuses it after any restored window there. wayland-session-restore-no-activation.patch passes it
+ the activation token of the launch.
+ .
+ Related to Mozilla bug 1565050: with external links opening in a tab, the URL opens in the first window of the
+ saved session rather than in the last used one.
+Author: Mitar
+Bug: https://bugzilla.mozilla.org/show_bug.cgi?id=2090730
+Forwarded: no
+Last-Update: 2026-11-23
+diff --git a/browser/components/sessionstore/SessionStore.sys.mjs b/browser/components/sessionstore/SessionStore.sys.mjs
+--- a/browser/components/sessionstore/SessionStore.sys.mjs
++++ b/browser/components/sessionstore/SessionStore.sys.mjs
+@@ -140,6 +140,9 @@
+  * @property {string} [restoreSource]
+  *   What started the restore, recorded as the `entry_point` of the
+  *   `windowFeaturesMismatchIgnored` telemetry event.
++ * @property {boolean} [restoreIntoNewWindows]
++ *   Whether to restore every window into a new one and leave the window passed
++ *   in as it was opened, with the pages from the command line or the start page.
+  * @property {string} [trigger]
+  *   The reason recorded when the restore opens a Smart Window.
+  */
+@@ -466,6 +469,11 @@ class _SessionStore {
+   // open a new tab for the user.
+   #isUserConfiguredRestore = false;
+ 
++  // True when the session is restored because Firefox restarted itself
++  // (browser.sessionstore.resume_session_once), as after an update, and not
++  // for a start by the user.
++  #isRestartRestore = false;
++
+   // True when a URL was provided on the command line at startup
+   // (e.g. `firefox https://example.com`). When true, the new-tab-on-restore
+   // feature is preempted since the user already has a destination.
+@@ -962,6 +970,10 @@ class _SessionStore {
+         this.#isUserConfiguredRestore = true;
+       }
+ 
++      if (this.#prefBranch.getBoolPref("sessionstore.resume_session_once")) {
++        this.#isRestartRestore = true;
++      }
++
+       // at this point, we've as good as resumed the session, so we can
+       // clear the resume_session_once flag, if it's set
+       if (
+@@ -1905,6 +1917,16 @@ class _SessionStore {
+             firstWindow: true,
+             overwriteTabs: overwrite,
+             restoreSource: "automatic_startup",
++            // The window opened for the launch keeps its page, as a window
++            // opened while Firefox runs does, and every saved window is restored
++            // into a new one. With a page from the command line, like a link
++            // opened from another application, this follows where external
++            // links open. Without one, it holds for every start by the user,
++            // also after a crash, but not for a restart by Firefox itself,
++            // which reopens the windows as they were.
++            restoreIntoNewWindows: this.#cmdLineHasURL(aWindow)
++              ? this.#externalLinksOpenInNewWindow()
++              : !this.#isRestartRestore,
+           };
+           this.#restoreWindows(aWindow, aInitialState, options);
+         }
+@@ -6583,15 +6605,18 @@ class _SessionStore {
+    *
+    * @param {BrowserWindow[]} windows
+    *        unordered array of windows to restore
++   * @param {BrowserWindow} [windowToFocus]
++   *        the window to focus once they are restored, by default the most
++   *        recently used one of them
+    */
+-  #restoreWindowsInReversedZOrder(windows) {
++  #restoreWindowsInReversedZOrder(windows, windowToFocus = null) {
+     windows.sort(
+       (a, b) =>
+         (WINDOW_RESTORE_ZINDICES.get(a) || 0) -
+         (WINDOW_RESTORE_ZINDICES.get(b) || 0)
+     );
+ 
+-    this.#windowToFocus = windows[0];
++    this.#windowToFocus = windowToFocus ?? windows[0];
+     this.#restoreWindowsFeaturesAndTabs(windows);
+   }
+ 
+@@ -6654,6 +6679,21 @@ class _SessionStore {
+       return;
+     }
+ 
++    if (aOptions.restoreIntoNewWindows) {
++      this.#openWindows(root).then(windows => {
++        // #openWindows() skips windows without tabs and counts them as
++        // restored, so with none left the restore is complete.
++        if (!windows.length) {
++          this.#sendRestoreCompletedNotifications();
++          return;
++        }
++        this.#restoreWindowsInReversedZOrder(windows, aWindow);
++      });
++
++      lazy.DevToolsShim.restoreDevToolsSession(aState);
++      return;
++    }
++
+     let firstWindowData = root.windows.splice(0, 1);
+     let firstWindowState = firstWindowData[0];
+     if (!this.#canRestoreIntoExistingWindow(aWindow, firstWindowState)) {
+@@ -7690,6 +7730,39 @@ class _SessionStore {
+     return !hasFirstArgument;
+   }
+ 
++  /**
++   * Whether the window was opened with pages from the command line, other than
++   * the default arguments, which open the start page.
++   *
++   * @param {Window} aWindow
++   *        Window reference
++   * @returns {boolean}
++   */
++  #cmdLineHasURL(aWindow) {
++    if (!aWindow.arguments || !aWindow.arguments[0]) {
++      return false;
++    }
++    let defaultArgs = Cc["@mozilla.org/browser/clh;1"].getService(
++      Ci.nsIBrowserHandler
++    ).defaultArgs;
++    return aWindow.arguments[0] != defaultArgs;
++  }
++
++  /**
++   * Whether a link opened from another application opens in a new window,
++   * decided as BrowserDOMWindow.openURI() decides it while Firefox runs.
++   *
++   * @returns {boolean}
++   */
++  #externalLinksOpenInNewWindow() {
++    let where =
++      lazy.NimbusFeatures.externalLinkHandling.getVariable("openBehavior");
++    if (where == -1) {
++      where = Services.prefs.getIntPref("browser.link.open_newwindow");
++    }
++    return where == Ci.nsIBrowserDOMWindow.OPEN_NEWWINDOW;
++  }
++
+   /**
+    * on popup windows, the AppWindow's attributes seem not to be set correctly
+    * we use thus JSDOMWindow attributes for sizemode and normal window attributes
