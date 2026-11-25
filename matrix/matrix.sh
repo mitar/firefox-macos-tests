@@ -257,24 +257,29 @@ setup_app() {
 # Chooses to continue where the browser left off, as its settings page does: its RestoreOnStartup policy applies on
 # macOS only with device management, and the browser keeps the setting in Secure Preferences, signed for the machine,
 # so that a value written into the profile is reset. cdp.py calls the settings page's own setPref through the DevTools
-# protocol, for which only this start of the browser opens a port. The session with the settings page is removed
-# afterwards.
+# protocol, which the browser offers only for a profile outside its default directory, so the setting is made in one
+# there and the profile is copied to the default directory, without the session with the settings page.
 choose_restore() {
-  local data=$1 page
+  local data=$1 page setup=/tmp/$APP-setup
   page=$([ "$APP" = chrome ] && echo chrome://settings/onStartup || echo edge://settings/startHomeNTP)
-  open -a "$NAME" --args --remote-debugging-port=9333 '--remote-allow-origins=*'
+  rm -rf "$setup"
+  mkdir -p "$setup"
+  touch "$setup/First Run"
+  open -na "$NAME" --args "--user-data-dir=$setup" --remote-debugging-port=9333 '--remote-allow-origins=*' --no-first-run
   wait_for_app_window || log "$NAME opened no window"
   sleep 5
-  python3 "$HERE/cdp.py" 9333 "$page" session.restore_on_startup 1 2>&1 | tee -a "$OUT/log.txt"
+  python3 "$HERE/cdp.py" 9333 "$page" session.restore_on_startup 1 2>&1 | tail -3 | tee -a "$OUT/log.txt"
   sleep 2
   screencapture -x "$OUT/restore-setting.png"
   quit_app
+  rm -rf "$data"
+  cp -R "$setup" "$data"
+  rm -rf "$data/Default/Sessions" "$data/DevToolsActivePort"
   if grep -q '"restore_on_startup":1' "$data/Default/Secure Preferences" 2>/dev/null; then
     log "$NAME continues where it left off"
   else
     log "$NAME did not keep the setting to continue where it left off"
   fi
-  rm -rf "$data/Default/Sessions"
 }
 
 setup_firefox() {
