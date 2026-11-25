@@ -254,37 +254,18 @@ setup_app() {
   log "$NAME $(defaults read "$APP_PATH/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null)"
 }
 
-# Chooses to continue where the browser left off on its settings page, as a user does: its RestoreOnStartup policy
-# applies on macOS only with device management, and the browser keeps the setting in Secure Preferences, signed for
-# the machine. The option is found by its name through the accessibility interface, for which Chromium exposes its
-# pages when started with --force-renderer-accessibility, as only for this. The session with the settings page is
-# removed afterwards.
+# Chooses to continue where the browser left off, as its settings page does: its RestoreOnStartup policy applies on
+# macOS only with device management, and the browser keeps the setting in Secure Preferences, signed for the machine,
+# so that a value written into the profile is reset. cdp.py calls the settings page's own setPref through the DevTools
+# protocol, for which only this start of the browser opens a port. The session with the settings page is removed
+# afterwards.
 choose_restore() {
-  local data=$1 page option
-  if [ "$APP" = chrome ]; then
-    page=chrome://settings/onStartup
-    option="Continue where you left off"
-  else
-    page=edge://settings/startHomeNTP
-    option="Open tabs from the previous session"
-  fi
-  open -a "$NAME" --args --force-renderer-accessibility
+  local data=$1 page
+  page=$([ "$APP" = chrome ] && echo chrome://settings/onStartup || echo edge://settings/startHomeNTP)
+  open -a "$NAME" --args --remote-debugging-port=9333 '--remote-allow-origins=*'
   wait_for_app_window || log "$NAME opened no window"
   sleep 5
-  activate_app
-  load "$page"
-  sleep 5
-  osascript -e "tell application \"System Events\" to tell process \"$PROC\"
-      repeat with e in (entire contents of front window)
-        try
-          if role of e is \"AXRadioButton\" and (name of e contains \"$option\" or description of e contains \"$option\" or title of e contains \"$option\") then
-            click e
-            return \"clicked\"
-          end if
-        end try
-      end repeat
-      return \"not found\"
-    end tell" 2>&1 | tee -a "$OUT/log.txt"
+  python3 "$HERE/cdp.py" 9333 "$page" session.restore_on_startup 1 2>&1 | tee -a "$OUT/log.txt"
   sleep 2
   screencapture -x "$OUT/restore-setting.png"
   quit_app
