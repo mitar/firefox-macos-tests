@@ -269,7 +269,7 @@ click_text() {
 # Secure Preferences, signed for the profile, so that a value written into the profile is reset. The session with the
 # settings page is removed.
 choose_restore() {
-  local data=$1 page option i misses=0
+  local data=$1 page option i misses=0 clicked=
   if [ "$APP" = chrome ]; then
     page=chrome://settings/onStartup; option="Continue where you left off"
   else
@@ -279,17 +279,21 @@ choose_restore() {
   open -a "$NAME"
   wait_for_app_window || log "$NAME opened no window"
   sleep 8
+  # Edge shows its questions in a dialog of their own, more than a minute after its first start on a runner, and the
+  # next question a few seconds after the previous.
   if [ "$APP" = edge ]; then
-    for i in $(seq 10); do
+    for i in $(seq 30); do
       if click_text Skip "Continue without signing in" "Confirm and continue" "Got it" "Not now" "No, thanks" "Start browsing"; then
         cp /tmp/screen.png "$OUT/first-run-$i.png"
         misses=0
+        clicked=1
       else
         misses=$((misses + 1))
-        [ $misses -lt 2 ] || break
+        [ $misses -lt $([ -n "$clicked" ] && echo 3 || echo 15) ] || break
       fi
       sleep 4
     done
+    cp /tmp/screen.png "$OUT/first-run-end.png"
   fi
   activate_app
   sleep 1
