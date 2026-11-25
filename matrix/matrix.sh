@@ -257,7 +257,8 @@ setup_app() {
 # Chooses to continue where the browser left off on its settings page, as a user does: its RestoreOnStartup policy
 # applies on macOS only with device management, and the browser keeps the setting in Secure Preferences, signed for
 # the machine. The option is found by its name through the accessibility interface, for which Chromium exposes its
-# pages once asked with AXManualAccessibility. The session with the settings page is removed afterwards.
+# pages when started with --force-renderer-accessibility, as only for this. The session with the settings page is
+# removed afterwards.
 choose_restore() {
   local data=$1 page option
   if [ "$APP" = chrome ]; then
@@ -267,15 +268,13 @@ choose_restore() {
     page=edge://settings/startHomeNTP
     option="Open tabs from the previous session"
   fi
-  open -a "$NAME"
+  open -a "$NAME" --args --force-renderer-accessibility
   wait_for_app_window || log "$NAME opened no window"
   sleep 5
   activate_app
   load "$page"
   sleep 5
   osascript -e "tell application \"System Events\" to tell process \"$PROC\"
-      set value of attribute \"AXManualAccessibility\" to true
-      delay 3
       repeat with e in (entire contents of front window)
         try
           if role of e is \"AXRadioButton\" and (name of e contains \"$option\" or description of e contains \"$option\" or title of e contains \"$option\") then
@@ -288,7 +287,7 @@ choose_restore() {
     end tell" 2>&1 | tee -a "$OUT/log.txt"
   sleep 2
   screencapture -x "$OUT/restore-setting.png"
-  QUIT_URL=$([ "$APP" = chrome ] && echo chrome://quit || echo edge://quit) quit_app
+  quit_app
   if grep -q '"restore_on_startup":1' "$data/Default/Secure Preferences" 2>/dev/null; then
     log "$NAME continues where it left off"
   else
@@ -366,7 +365,12 @@ activate_app() {
 quit_app() {
   activate_app
   sleep 1
-  if [ -n "${QUIT_URL:-}" ]; then load "$QUIT_URL"; else keystroke q "command down"; fi
+  if [ "$APP" = chrome ] || [ "$APP" = edge ]; then
+    # Quit in the application's menu, as Command+Q may ask to be held.
+    osascript -e "tell application \"System Events\" to tell process \"$PROC\" to click (first menu item of menu 1 of menu bar item 2 of menu bar 1 whose name starts with \"Quit\")"
+  else
+    keystroke q "command down"
+  fi
   local i
   for i in $(seq 30); do
     pgrep -x "$PROC" > /dev/null || return 0
