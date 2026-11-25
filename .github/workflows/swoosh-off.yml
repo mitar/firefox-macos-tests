@@ -1,0 +1,35 @@
+name: swoosh-off
+
+# Firefox 161 and 161 with the patch of bug 2090730 in A, B2 and E with macOS's "When switching to an application,
+# switch to a Space with open windows for the application" off during the scenario, which with its default on moves the
+# user to a Space of a restored window right after Firefox restored its session.
+on:
+  push:
+    paths:
+      - .github/workflows/swoosh-off.yml
+  workflow_dispatch:
+
+jobs:
+  scenario:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-26]
+        build: ["161.0", patched]
+        scenario: [A, B2, E]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the scenario
+        env:
+          BUILD: "161.0"
+          PATCHED: ${{ matrix.build == 'patched' && '1' || '' }}
+          SWOOSH_OFF: "1"
+        run: matrix/matrix.sh firefox ${{ matrix.scenario }} out
+      - name: Upload the result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firefox-${{ matrix.build }}-swoosh-off-${{ matrix.scenario }}-${{ matrix.runner }}
+          path: out
