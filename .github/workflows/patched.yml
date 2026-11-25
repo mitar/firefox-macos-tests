@@ -15,8 +15,9 @@ jobs:
       fail-fast: false
       matrix:
         runner: [macos-15, macos-26]
-        scenario: [A, B1, B2, C, E, F]
-        run: [1, 2]
+        # A selection of the jobs while the focus after restoring is debugged.
+        scenario: [A]
+        run: [1]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
@@ -25,6 +26,7 @@ jobs:
         env:
           BUILD: "161.0"
           PATCHED: "1"
+          DEBUG: "1"
         run: matrix/matrix.sh firefox ${{ matrix.scenario }} out
       - name: Upload the result
         if: always()
