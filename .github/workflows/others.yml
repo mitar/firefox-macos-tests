@@ -16,6 +16,13 @@ jobs:
         runner: [macos-15, macos-26]
         app: [chrome, edge]
         scenario: [A]
+        include:
+          - runner: macos-15
+            app: safari
+            scenario: D1
+          - runner: macos-26
+            app: safari
+            scenario: D1
         exclude:
           - app: safari
             scenario: F
