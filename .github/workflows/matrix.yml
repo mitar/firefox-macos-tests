@@ -12,9 +12,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-26]
+        runner: [macos-15, macos-26]
         build: ["161.0", "162.0b1"]
-        scenario: [A, B1, B2]
+        scenario: [A, B1, B2, C, D1, D2, E, F]
         # Each scenario runs twice, as the window which ends up with the focus can differ between runs.
         run: [1, 2]
     runs-on: ${{ matrix.runner }}

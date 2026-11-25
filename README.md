@@ -13,3 +13,9 @@ archive.mozilla.org, makes it the default browser, creates four Spaces with a wi
 (`matrix/other-app.py`), opens Firefox's three windows on Spaces 1 to 3, and launches, links, crashes or restarts it as
 the scenario says, with real clicks on the Dock and key presses. Each job uploads `result.json` with the windows on
 screen and the frontmost window before and after, the windows of each Space at the end, and screenshots.
+
+`others` runs the same scenarios with Chrome, Edge, Safari and TextEdit. Chrome and Edge continue where they left off as
+a user chooses it, as their policy for it applies on macOS only with device management: `matrix.sh` clicks the option
+on their startup settings page, and Edge's questions at its first start, finding them on the screen with macOS's text
+recognition (`matrix/find-text.swift`). macOS rearranges Spaces by their most recent use, so `matrix.sh` tells a Space by
+the window of the other application on it.

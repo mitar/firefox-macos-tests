@@ -14,8 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         runner: [macos-15, macos-26]
-        # A selection of the jobs while the setup of Edge is tried again.
-        app: [edge]
+        app: [chrome, edge, safari, textedit]
         scenario: [A, B1, C, D1, E, F]
         exclude:
           - app: safari
