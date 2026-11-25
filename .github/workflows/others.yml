@@ -15,15 +15,8 @@ jobs:
       matrix:
         runner: [macos-15, macos-26]
         # A selection of the jobs while the setup of Edge is tried.
-        app: [chrome]
+        app: [edge]
         scenario: [A, B1, C, D1, E, F]
-        include:
-          - runner: macos-15
-            app: edge
-            scenario: A
-          - runner: macos-26
-            app: edge
-            scenario: A
         exclude:
           - app: safari
             scenario: F
