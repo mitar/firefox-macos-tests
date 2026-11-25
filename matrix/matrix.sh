@@ -184,7 +184,7 @@ load() {
 }
 
 # Loads the page NAME in the frontmost window, again when the window does not show it, as when a page Edge shows at its
-# start takes the keys.
+# start receives the keys.
 load_page() {
   local name=$1 attempt
   for attempt in 1 2 3; do
