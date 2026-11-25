@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         runner: [macos-15, macos-26]
-        # A selection of the jobs while the setup of Edge is tried.
+        # A selection of the jobs while the setup of Edge is tried again.
         app: [edge]
         scenario: [A, B1, C, D1, E, F]
         exclude:
