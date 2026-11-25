@@ -246,39 +246,49 @@ setup_app() {
       defaults write "$domain" DefaultSearchProviderEnabled -bool true
       defaults write "$domain" DefaultSearchProviderName -string Example
       defaults write "$domain" DefaultSearchProviderSearchURL -string 'https://search.example/?q={searchTerms}'
-      mkdir -p "$HOME/Library/Application Support/$support"
-      touch "$HOME/Library/Application Support/$support/First Run"
-      choose_restore "$HOME/Library/Application Support/$support"
+      PROFILE="$HOME/Library/Application Support/$support"
+      mkdir -p "$PROFILE"
+      touch "$PROFILE/First Run"
+      choose_restore "$PROFILE"
       ;;
   esac
   log "$NAME $(defaults read "$APP_PATH/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null)"
 }
 
-# Chooses to continue where the browser left off, as its settings page does: its RestoreOnStartup policy applies on
-# macOS only with device management, and the browser keeps the setting in Secure Preferences, signed for the machine,
-# so that a value written into the profile is reset. cdp.py calls the settings page's own setPref through the DevTools
-# protocol, which the browser offers only for a profile outside its default directory, so the setting is made in one
-# there and the profile is copied to the default directory, without the session with the settings page.
+# Chooses to continue where the browser left off, as a user does: the browser starts with its default profile, its
+# startup settings page is opened, the option is clicked, and the browser quits. Its RestoreOnStartup policy applies on
+# macOS only with device management, and the browser keeps the setting in Secure Preferences, signed for the profile,
+# so that a value written into the profile is reset. The click is at the place the option has on the runner's screen
+# of 1024x768 (see restore-setting.png). The session with the settings page is removed.
 choose_restore() {
-  local data=$1 page setup=/tmp/$APP-setup
-  page=$([ "$APP" = chrome ] && echo chrome://settings/onStartup || echo edge://settings/startHomeNTP)
-  rm -rf "$setup"
-  mkdir -p "$setup"
-  touch "$setup/First Run"
-  open -na "$NAME" --args "--user-data-dir=$setup" --remote-debugging-port=9333 '--remote-allow-origins=*' --no-first-run
+  local data=$1 page position
+  if [ "$APP" = chrome ]; then
+    page=chrome://settings/onStartup; position=300,346
+  else
+    page=edge://settings/startHomeNTP; position=225,387
+  fi
+  open -a "$NAME"
   wait_for_app_window || log "$NAME opened no window"
-  sleep 5
-  python3 "$HERE/cdp.py" 9333 "$page" session.restore_on_startup 1 2>&1 | tail -3 | tee -a "$OUT/log.txt"
+  sleep 8
+  activate_app
+  sleep 1
+  load "$page"
+  wait_for_title Settings || log "no window shows the settings"
+  sleep 4
+  cliclick "c:$position"
   sleep 2
   screencapture -x "$OUT/restore-setting.png"
   quit_app
-  rm -rf "$data"
-  cp -R "$setup" "$data"
-  rm -rf "$data/Default/Sessions" "$data/DevToolsActivePort"
-  if grep -q '"restore_on_startup":1' "$data/Default/Secure Preferences" 2>/dev/null; then
+  rm -rf "$data/Default/Sessions"
+  restore_setting
+}
+
+# Logs whether the browser's profile has the setting to continue where it left off.
+restore_setting() {
+  if grep -q '"restore_on_startup":1' "$PROFILE/Default/Secure Preferences" "$PROFILE/Default/Preferences" 2>/dev/null; then
     log "$NAME continues where it left off"
   else
-    log "$NAME did not keep the setting to continue where it left off"
+    log "$NAME does not continue where it left off: $(grep -o '"restore_on_startup":[0-9]*' "$PROFILE/Default/Secure Preferences" "$PROFILE/Default/Preferences" 2>/dev/null)"
   fi
 }
 
@@ -339,7 +349,7 @@ open_windows() {
       sleep 3
       load_page "$name"
     fi
-    wait_for_title "$name" || log "no window shows $name"
+    wait_for_title "$name" || { log "no window shows $name"; screencapture -x "$OUT/seed-$n.png"; }
     sleep 2
   done
 }
@@ -426,6 +436,7 @@ main() {
   esac
   observe $([ "$SCENARIO" = F ] && echo 20 || echo 10)
   spaces
+  [ -z "${PROFILE:-}" ] || restore_setting
   python3 - "$OUT" "$APP" "$SCENARIO" "$BUILD" <<'END'
 import json, pathlib, sys
 out = pathlib.Path(sys.argv[1])
