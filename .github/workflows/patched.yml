@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         runner: [macos-15, macos-26]
-        # A selection of the jobs while the focus after restoring is debugged, with the stacks of focus().
+        # A selection of the jobs while the focus after restoring is debugged, with switching Spaces off.
         scenario: [A]
         run: [1]
     runs-on: ${{ matrix.runner }}
@@ -27,6 +27,7 @@ jobs:
           BUILD: "161.0"
           PATCHED: "1"
           DEBUG: "1"
+          SWOOSH_OFF: "1"
         run: matrix/matrix.sh firefox ${{ matrix.scenario }} out
       - name: Upload the result
         if: always()
