@@ -331,6 +331,14 @@ setup_firefox() {
   [ "$SCENARIO" = B2 ] || [ "$SCENARIO" = D2 ] && policies=firefox-policies-new-window.json
   sudo cp "$HERE/$policies" /Applications/Firefox.app/Contents/Resources/distribution/policies.json
   [ -z "${PATCHED:-}" ] || patch_firefox
+  # With DEBUG=1, Firefox's autoconfig logs to /tmp/windows-opened.txt each window Firefox opens, with the JavaScript
+  # stack which opened it, and when each window is activated (matrix/mozilla.cfg).
+  if [ -n "${DEBUG:-}" ]; then
+    sudo mkdir -p /Applications/Firefox.app/Contents/Resources/defaults/pref
+    sudo cp "$HERE/autoconfig.js" /Applications/Firefox.app/Contents/Resources/defaults/pref/
+    sudo cp "$HERE/mozilla.cfg" /Applications/Firefox.app/Contents/Resources/
+    rm -f /tmp/windows-opened.txt
+  fi
 }
 
 # Applies the patch of bug 2090730 (session-restore-launch-window.patch of ubuntu-config) to the installed Firefox: it
@@ -493,6 +501,7 @@ for name in ("before", "after", "timeline", "spaces"):
     result[name] = json.loads(path.read_text()) if path.exists() else None
 (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
 END
+  [ -z "${DEBUG:-}" ] || cp /tmp/windows-opened.txt "$OUT/" 2>/dev/null
   log "done"
 }
 
