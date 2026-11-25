@@ -64,6 +64,9 @@ type_text() {
 space_to() {
   local target=$1 current tries=0
   [ "$(current_space)" = "$target" ] && return 0
+  # Control+arrow does nothing while Firefox or Safari is frontmost, so Finder comes to the front first.
+  osascript -e 'tell application "Finder" to activate' > /dev/null 2>&1
+  sleep 0.5
   open -a "Mission Control"
   sleep 1.5
   osascript -e "tell application \"System Events\" to tell process \"Dock\" to click button $target of list 1 of group \"Spaces Bar\" of group 1 of group \"Mission Control\"" > /dev/null 2>&1 \
@@ -74,7 +77,13 @@ space_to() {
     sleep 1.5
     tries=$((tries + 1))
   done
-  [ "$(current_space)" = "$target" ] || log "could not switch to Space $target"
+  if [ "$(current_space)" != "$target" ]; then
+    log "could not switch to Space $target"
+    open -a "Mission Control"
+    sleep 1.5
+    osascript -e 'tell application "System Events" to tell process "Dock" to get {name, role} of every UI element of list 1 of group "Spaces Bar" of group 1 of group "Mission Control"' >> "$OUT/log.txt" 2>&1
+    key_code 53
+  fi
 }
 
 frontmost() {
@@ -237,15 +246,55 @@ setup_app() {
       defaults write "$domain" DefaultSearchProviderEnabled -bool true
       defaults write "$domain" DefaultSearchProviderName -string Example
       defaults write "$domain" DefaultSearchProviderSearchURL -string 'https://search.example/?q={searchTerms}'
-      mkdir -p "$HOME/Library/Application Support/$support/Default"
+      mkdir -p "$HOME/Library/Application Support/$support"
       touch "$HOME/Library/Application Support/$support/First Run"
-      # Policies set with defaults apply on macOS only with device management, so the profile has "Continue where you
-      # left off" chosen, as the browser's settings choose it.
-      echo '{"session": {"restore_on_startup": 1}, "browser": {"check_default_browser": false, "has_seen_welcome_page": true}}' \
-        > "$HOME/Library/Application Support/$support/Default/Preferences"
+      choose_restore "$HOME/Library/Application Support/$support"
       ;;
   esac
   log "$NAME $(defaults read "$APP_PATH/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null)"
+}
+
+# Chooses to continue where the browser left off on its settings page, as a user does: its RestoreOnStartup policy
+# applies on macOS only with device management, and the browser keeps the setting in Secure Preferences, signed for
+# the machine. The option is found by its name through the accessibility interface, for which Chromium exposes its
+# pages once asked with AXManualAccessibility. The session with the settings page is removed afterwards.
+choose_restore() {
+  local data=$1 page option
+  if [ "$APP" = chrome ]; then
+    page=chrome://settings/onStartup
+    option="Continue where you left off"
+  else
+    page=edge://settings/startHomeNTP
+    option="Open tabs from the previous session"
+  fi
+  open -a "$NAME"
+  wait_for_app_window || log "$NAME opened no window"
+  sleep 5
+  activate_app
+  load "$page"
+  sleep 5
+  osascript -e "tell application \"System Events\" to tell process \"$PROC\"
+      set value of attribute \"AXManualAccessibility\" to true
+      delay 3
+      repeat with e in (entire contents of front window)
+        try
+          if role of e is \"AXRadioButton\" and (name of e contains \"$option\" or description of e contains \"$option\" or title of e contains \"$option\") then
+            click e
+            return \"clicked\"
+          end if
+        end try
+      end repeat
+      return \"not found\"
+    end tell" 2>&1 | tee -a "$OUT/log.txt"
+  sleep 2
+  screencapture -x "$OUT/restore-setting.png"
+  QUIT_URL=$([ "$APP" = chrome ] && echo chrome://quit || echo edge://quit) quit_app
+  if grep -q '"restore_on_startup":1' "$data/Default/Secure Preferences" 2>/dev/null; then
+    log "$NAME continues where it left off"
+  else
+    log "$NAME did not keep the setting to continue where it left off"
+  fi
+  rm -rf "$data/Default/Sessions"
 }
 
 setup_firefox() {
