@@ -1,7 +1,8 @@
 name: patched
 
 # Firefox 161 with the patch of bug 2090730 (matrix/session-restore-launch-window.patch, from ubuntu-config), in the
-# scenarios which start Firefox and restore its session (A, B1, B2, E), and those which do not (C, F) for comparison.
+# scenarios which start Firefox and restore its session (A, B1, B2, E), and those which do not (C, F) for comparison,
+# each twice.
 on:
   push:
     paths:
