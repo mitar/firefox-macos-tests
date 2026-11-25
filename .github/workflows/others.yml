@@ -1,7 +1,7 @@
 name: others
 
 # The scenarios with the applications the map compares Firefox with, which restore their windows when they start:
-# Chrome, Edge, Safari and TextEdit.
+# Chrome, Edge, Safari and TextEdit, each in a job of its own.
 on:
   push:
     paths:
