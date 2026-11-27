@@ -23,4 +23,5 @@ the window of the other application on it.
 `gtk` checks what GTK's macOS backend shows in the macOS menu bar, for comparison with global menus on Linux:
 `gtk/app.py` is a GTK 4 application with a menu bar set with `gtk_application_set_menubar()`, or with only a header bar
 and its primary menu, as GNOME applications have, with GTK alone or with libadwaita. `gtk/run.sh` installs GTK from
-Homebrew, runs each and records the menus and items System Events reports for its menu bar, with screenshots.
+Homebrew, runs one of them, activates it with a click on its window, and records the menus and items System Events
+reports for its menu bar, with screenshots.
