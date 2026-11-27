@@ -3,7 +3,10 @@
 # menus and their items as System Events reports them (menus.txt), a screenshot right after the start (started.png),
 # one with the application in front (screen.png), and one with the menu of the application's name open (appmenu.png).
 #
-# Usage: gtk/run.sh VARIANT OUT
+# Usage: [RENDERER=cairo] gtk/run.sh VARIANT OUT
+#
+# RENDERER other than default is given to GTK as GSK_RENDERER. When the application is still busy 10 seconds after its
+# start, a sample of its stacks is recorded (sample.txt).
 
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -15,7 +18,9 @@ log() {
   echo "$(date +%T) $*" | tee -a "$OUT/log.txt"
 }
 
-log "macOS $(sw_vers -productVersion), variant $VARIANT"
+RENDERER=${RENDERER:-default}
+[ "$RENDERER" = default ] || export GSK_RENDERER=$RENDERER
+log "macOS $(sw_vers -productVersion), variant $VARIANT, renderer $RENDERER"
 brew install gtk4 libadwaita pygobject3 cliclick > "$OUT/brew.txt" 2>&1 || log "brew install failed, see brew.txt"
 log "$(brew list --versions gtk4 libadwaita pygobject3 | tr '\n' ' ')"
 
@@ -33,7 +38,11 @@ log "python ${PY:-none found}"
 "$PY" "$HERE/app.py" "$VARIANT" > "$OUT/app.log" 2>&1 &
 pid=$!
 sleep 10
-log "process $(ps -o pid=,stat=,comm= -p "$pid" || echo gone)"
+state=$(ps -o stat= -p "$pid")
+log "process $pid state ${state:-gone}"
+if [[ $state == R* ]]; then
+  sample "$pid" 3 -file "$OUT/sample.txt" > /dev/null 2>&1
+fi
 screencapture -x "$OUT/started.png"
 
 # macOS does not let a process started in the background take the focus, so a click on its window, in the middle of the

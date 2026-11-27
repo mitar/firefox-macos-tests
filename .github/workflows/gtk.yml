@@ -15,17 +15,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-15, macos-26]
+        runner: [macos-26]
         variant: [menubar, primary, adw]
+        # GTK's renderer: the default one, or cairo, which renders without the GPU.
+        renderer: [default, cairo]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Run the applications
+      - name: Run the application
+        env:
+          RENDERER: ${{ matrix.renderer }}
         run: gtk/run.sh ${{ matrix.variant }} out
       - name: Upload the result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gtk-${{ matrix.variant }}-${{ matrix.runner }}
+          name: gtk-${{ matrix.variant }}-${{ matrix.renderer }}-${{ matrix.runner }}
           path: out
