@@ -19,3 +19,8 @@ a user chooses it, as their policy for it applies on macOS only with device mana
 on their startup settings page, and Edge's questions at its first start, finding them on the screen with macOS's text
 recognition (`matrix/find-text.swift`). macOS rearranges Spaces by their most recent use, so `matrix.sh` tells a Space by
 the window of the other application on it.
+
+`gtk` checks what GTK's macOS backend shows in the macOS menu bar, for comparison with global menus on Linux:
+`gtk/app.py` is a GTK 4 application with a menu bar set with `gtk_application_set_menubar()`, or with only a header bar
+and its primary menu, as GNOME applications have, with GTK alone or with libadwaita. `gtk/run.sh` installs GTK from
+Homebrew, runs each and records the menus and items System Events reports for its menu bar, with screenshots.

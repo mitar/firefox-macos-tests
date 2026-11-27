@@ -1,0 +1,29 @@
+name: gtk
+
+# What GTK's macOS backend shows in the macOS menu bar for a GTK 4 application with a menu bar, and for applications
+# with only a header bar and its primary menu, as GNOME applications have, with GTK and with libadwaita (gtk/run.sh).
+on:
+  push:
+    paths:
+      - gtk/**
+      - .github/workflows/gtk.yml
+  workflow_dispatch:
+
+jobs:
+  menubar:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-26]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the applications
+        run: gtk/run.sh out
+      - name: Upload the result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gtk-${{ matrix.runner }}
+          path: out
